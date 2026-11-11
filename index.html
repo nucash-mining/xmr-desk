@@ -129,6 +129,7 @@
     </div>
     <div class="dim" id="laddernote" style="font-size:11.5px;margin-top:8px">—</div>
     <div class="dim" id="ladderwall" style="font-size:11.5px;margin-top:4px"></div>
+    <div id="ladderstop" style="font-size:11.5px;margin-top:4px"></div>
   </div>
 </div>
 
@@ -168,6 +169,7 @@ function drawChart(candles, liq, ladder){
   let lo=Math.min(...candles.map(c=>c.l)), hi=Math.max(...candles.map(c=>c.h));
   if(liq && liq<lo) lo=liq;   // keep the liq line on-chart if price is near it
   if(ladder && ladder.levels) ladder.levels.forEach(L=>{ if(L.price<lo) lo=L.price; });
+  if(ladder && ladder.stop && ladder.stop.price<lo) lo=ladder.stop.price;
   const pad=(hi-lo)*0.08||1, min=lo-pad, max=hi+pad;
   const y=v=>H-((v-min)/(max-min))*H;
   // advisory bid-ladder support lines (green dashed)
@@ -180,6 +182,12 @@ function drawChart(candles, liq, ladder){
         ctx.fillStyle="rgba(43,213,118,.9)"; ctx.fillText("bid "+L.price.toFixed(2), 4, y(L.price)-2);
       }
     });
+  }
+  if(ladder && ladder.stop && ladder.stop.price>=min && ladder.stop.price<=max){
+    ctx.strokeStyle="rgba(240,167,62,.6)"; ctx.setLineDash([5,3]);
+    ctx.beginPath(); ctx.moveTo(0,y(ladder.stop.price)); ctx.lineTo(W,y(ladder.stop.price)); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle="#f0a73e"; ctx.font="9px ui-monospace,monospace"; ctx.textAlign="right";
+    ctx.fillText("stop "+ladder.stop.price.toFixed(2), W-4, y(ladder.stop.price)-2);
   }
   if(liq && liq>=min && liq<=max){
     ctx.strokeStyle="rgba(255,93,93,.55)"; ctx.setLineDash([3,3]);
@@ -288,7 +296,12 @@ async function tick(){
     $("ladderwall").textContent = lad.wall
       ? `biggest live bid wall: ${fmt(lad.wall.price,2)} (${pct(lad.wall.pct)}) · ${fmt(lad.wall.size,1)} XMR`
       : "";
-  } else { $("laddernote").textContent="computing support levels…"; $("ladderwall").textContent=""; }
+    $("ladderstop").innerHTML = lad.stop
+      ? `<span style="color:#f0a73e">⚑ suggested invalidation / stop ≈ ${fmt(lad.stop.price,2)} `
+        + `(${pct(lad.stop.pct)} from price · ~${pct(lad.stop.pct*(lad.stop.roe_mult||1))} ROE at ${lad.stop.roe_mult}x) `
+        + `— below structure, above liquidation</span>`
+      : "";
+  } else { $("laddernote").textContent="computing support levels…"; $("ladderwall").textContent=""; $("ladderstop").textContent=""; }
 
   drawChart(s.chart, p.liq_price, s.ladder);
 
