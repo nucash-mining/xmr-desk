@@ -1,0 +1,239 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>XMR Desk</title>
+<style>
+  :root{
+    --bg:#0b0e13; --card:#141922; --card2:#1b2230; --line:#232c3a;
+    --txt:#e7ecf3; --dim:#8a97a8; --green:#2bd576; --red:#ff5d5d;
+    --amber:#f0a73e; --blue:#4ea3ff; --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--txt);
+    font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;padding:14px;max-width:1100px;margin:0 auto}
+  h1{font-size:15px;margin:0;letter-spacing:.5px;font-weight:600}
+  .dim{color:var(--dim)} .mono{font-family:var(--mono)}
+  .row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+  .between{justify-content:space-between}
+  header{margin-bottom:12px}
+  .badge{font-size:11px;font-weight:700;padding:3px 8px;border-radius:6px;
+    background:#2a2f14;color:var(--amber);border:1px solid #4a4420;letter-spacing:.5px}
+  .live{width:8px;height:8px;border-radius:50%;background:var(--green);display:inline-block;
+    box-shadow:0 0 6px var(--green);animation:pulse 2s infinite}
+  @keyframes pulse{50%{opacity:.35}}
+  .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:12px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px}
+  .card h2{font-size:11px;text-transform:uppercase;letter-spacing:1px;color:var(--dim);
+    margin:0 0 10px}
+  .big{font-size:30px;font-weight:700;font-family:var(--mono);line-height:1}
+  .kv{display:flex;justify-content:space-between;padding:5px 0;font-size:13px;border-bottom:1px solid #1b212c}
+  .kv:last-child{border-bottom:0}
+  .kv b{font-family:var(--mono);font-weight:600}
+  .pos{color:var(--green)} .neg{color:var(--red)}
+  .bar{height:10px;border-radius:6px;background:#0f141c;border:1px solid var(--line);overflow:hidden;margin-top:8px;position:relative}
+  .bar>span{display:block;height:100%;background:linear-gradient(90deg,#1c6f44,var(--green));width:0%}
+  .gauge{height:10px;border-radius:6px;background:linear-gradient(90deg,var(--red),#3a4150 48%,#3a4150 52%,var(--green));position:relative;margin-top:6px}
+  .gauge>i{position:absolute;top:-3px;width:3px;height:16px;background:#fff;border-radius:2px;transform:translateX(-50%)}
+  table{width:100%;border-collapse:collapse;font-size:12.5px}
+  th,td{text-align:right;padding:6px 6px;border-bottom:1px solid #1b212c}
+  th{color:var(--dim);font-weight:600;font-size:11px;text-transform:uppercase;letter-spacing:.5px}
+  td:first-child,th:first-child{text-align:left}
+  td.mono,.num{font-family:var(--mono)}
+  .dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px;vertical-align:middle}
+  .on{background:var(--green)} .off{background:#55606f}
+  .tag{font-size:11px;padding:2px 7px;border-radius:5px;font-weight:700;letter-spacing:.3px}
+  .tag.yes{background:#10311f;color:var(--green);border:1px solid #1d5a38}
+  .tag.no{background:#2a1414;color:#c7707a;border:1px solid #502525}
+  canvas{width:100%;height:150px;display:block}
+  .log{font-family:var(--mono);font-size:11.5px;color:#aeb9c7;max-height:190px;overflow:auto;line-height:1.55}
+  .log div{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .skim{color:var(--amber)} .rebuy{color:var(--blue)}
+  footer{color:var(--dim);font-size:11px;margin-top:14px;text-align:center}
+  .err{color:var(--red);font-family:var(--mono);font-size:13px}
+</style>
+</head>
+<body>
+<header class="row between">
+  <div class="row">
+    <h1>XMR&nbsp;DESK</h1>
+    <span class="badge" id="mode">PAPER</span>
+    <span class="live" title="live"></span>
+  </div>
+  <div class="dim mono" id="stamp">—</div>
+</header>
+
+<div id="err" class="err" style="display:none"></div>
+
+<div class="grid">
+  <!-- price / pnl -->
+  <div class="card">
+    <h2>Hyperliquid XMR-PERP</h2>
+    <div class="big" id="mark">—</div>
+    <div class="row between" style="margin-top:8px">
+      <span class="dim" style="font-size:12px">Unrealized PnL</span>
+      <b class="mono" id="pnl">—</b>
+    </div>
+    <div class="bar"><span id="pnlbar"></span></div>
+    <div class="dim" id="trighint" style="font-size:11px;margin-top:6px">—</div>
+  </div>
+
+  <!-- position -->
+  <div class="card">
+    <h2>Core long (held)</h2>
+    <div class="kv"><span class="dim">Size</span><b id="size">—</b></div>
+    <div class="kv"><span class="dim">Avg entry</span><b id="entry">—</b></div>
+    <div class="kv"><span class="dim">Notional</span><b id="notional">—</b></div>
+    <div class="kv"><span class="dim">Realized PnL</span><b id="realized">—</b></div>
+    <div class="kv"><span class="dim">Pending rebuys</span><b id="pending">—</b></div>
+  </div>
+
+  <!-- signal -->
+  <div class="card">
+    <h2>Consensus signal <span class="dim" id="nlive"></span></h2>
+    <div class="kv"><span class="dim">Consensus mid</span><b id="cmid">—</b></div>
+    <div class="row between" style="margin-top:4px">
+      <span class="dim" style="font-size:12px">Book imbalance</span>
+      <b class="mono" id="imb">—</b>
+    </div>
+    <div class="gauge"><i id="imbneedle" style="left:50%"></i></div>
+    <div class="row between" style="font-size:11px;margin-top:3px"><span class="neg">sell</span><span class="pos">buy</span></div>
+    <div class="kv" style="margin-top:6px"><span class="dim">Trade delta</span><b id="delta">—</b></div>
+    <div class="kv"><span class="dim">Dip / bottom</span><b id="bottom">—</b></div>
+  </div>
+</div>
+
+<div class="grid" style="margin-top:12px">
+  <div class="card" style="grid-column:1/-1">
+    <h2>Price — last 1m candles (Hyperliquid)</h2>
+    <canvas id="chart" width="1040" height="150"></canvas>
+  </div>
+</div>
+
+<div class="grid" style="margin-top:12px">
+  <div class="card" style="grid-column:1/-1">
+    <h2>Venues — orderbook &amp; trade flow</h2>
+    <div style="overflow:auto">
+    <table>
+      <thead><tr><th>Venue</th><th>Mid</th><th>Imbalance</th><th>Δ flow</th><th>Weight</th></tr></thead>
+      <tbody id="venues"></tbody>
+    </table>
+    </div>
+  </div>
+</div>
+
+<div class="grid" style="margin-top:12px">
+  <div class="card" style="grid-column:1/-1">
+    <h2>Activity</h2>
+    <div class="log" id="log"></div>
+  </div>
+</div>
+
+<footer>read-only paper desk · no live orders · polling every 3s</footer>
+
+<script>
+const $ = id => document.getElementById(id);
+const fmt = (n,d=2) => (n==null||isNaN(n)) ? "—" : Number(n).toLocaleString(undefined,{minimumFractionDigits:d,maximumFractionDigits:d});
+const usd = n => (n==null) ? "—" : (n<0?"-$":"$")+fmt(Math.abs(n),2);
+const pct = n => (n==null) ? "—" : (n>=0?"+":"")+fmt(n,2)+"%";
+
+function cls(n){ return n>0?"pos":n<0?"neg":""; }
+
+function drawChart(candles){
+  const cv=$("chart"), ctx=cv.getContext("2d");
+  const W=cv.width, H=cv.height; ctx.clearRect(0,0,W,H);
+  if(!candles||!candles.length){ return; }
+  const lo=Math.min(...candles.map(c=>c.l)), hi=Math.max(...candles.map(c=>c.h));
+  const pad=(hi-lo)*0.08||1, min=lo-pad, max=hi+pad;
+  const y=v=>H-((v-min)/(max-min))*H;
+  const n=candles.length, bw=W/n, body=Math.max(1,bw*0.6);
+  candles.forEach((c,i)=>{
+    const x=i*bw+bw/2;
+    const col=c.c>=c.o?"#2bd576":"#ff5d5d";
+    ctx.strokeStyle=col; ctx.fillStyle=col; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(x,y(c.h)); ctx.lineTo(x,y(c.l)); ctx.stroke();
+    const yo=y(c.o), yc=y(c.c); const top=Math.min(yo,yc); const h=Math.max(1,Math.abs(yc-yo));
+    ctx.fillRect(x-body/2,top,body,h);
+  });
+  // last price line
+  const last=candles[candles.length-1].c;
+  ctx.strokeStyle="rgba(240,167,62,.5)"; ctx.setLineDash([4,4]);
+  ctx.beginPath(); ctx.moveTo(0,y(last)); ctx.lineTo(W,y(last)); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle="#f0a73e"; ctx.font="11px ui-monospace,monospace"; ctx.textAlign="right";
+  ctx.fillText(last.toFixed(2), W-4, y(last)-4);
+}
+
+// API base: on github.io / the custom domain, fetch live data from the tunnel;
+// on localhost (the bot's own server) use same-origin.
+const API = (location.hostname==="localhost"||location.hostname==="127.0.0.1"||location.port==="8811")
+  ? "" : "https://xmr-api.wattxchange.app";
+async function tick(){
+  let d;
+  try{ d=await (await fetch(API+"/api/state",{cache:"no-store"})).json(); }
+  catch(e){ return; }
+  const s=d.snapshot||{};
+  if(!s.ok){ $("err").style.display="block"; $("err").textContent=(s.error||"starting…"); }
+  else $("err").style.display="none";
+  $("stamp").textContent = s.ts||"—";
+  if(s.mode) $("mode").textContent = s.mode.toUpperCase();
+
+  // price / pnl
+  $("mark").textContent = s.mark? fmt(s.mark,2): "—";
+  const p=s.position||{};
+  const pnl = p.pnl_pct;
+  $("pnl").textContent = pct(pnl); $("pnl").className="mono "+cls(pnl);
+  const trig=s.trigger_pnl_pct||10;
+  $("pnlbar").style.width = Math.max(0,Math.min(100,(pnl/trig)*100))+"%";
+  $("trighint").textContent = s.need_pct!=null
+    ? `skim fires at +${trig}% · ${s.need_pct>0? "need "+pct(s.need_pct)+" more":"TRIGGER ARMED"}`
+    : "—";
+
+  // position
+  $("size").textContent = p.core_size!=null? fmt(p.core_size,4)+" XMR":"—";
+  $("entry").textContent = p.core_entry? fmt(p.core_entry,2):"—";
+  $("notional").textContent = usd(p.notional);
+  $("realized").textContent = usd(p.realized_pnl);
+  $("realized").className = "mono "+cls(p.realized_pnl);
+  $("pending").textContent = p.pending? `${p.pending.length} (${fmt(p.pending_size,4)} XMR)`:"0";
+
+  // signal
+  const sg=s.signal||{};
+  $("nlive").textContent = sg.n_live!=null? `· ${sg.n_live}/10 live`:"";
+  $("cmid").textContent = sg.consensus_mid? fmt(sg.consensus_mid,2):"—";
+  $("imb").textContent = sg.imbalance!=null? fmt(sg.imbalance,2):"—";
+  $("imbneedle").style.left = ((sg.imbalance??0.5)*100)+"%";
+  $("delta").textContent = sg.delta_sign!=null? (sg.delta_sign>=0?"+":"")+fmt(sg.delta_sign,2):"—";
+  $("delta").className = "mono "+cls(sg.delta_sign);
+  $("bottom").innerHTML = sg.bottom? '<span class="tag yes">BOTTOMING</span>':'<span class="tag no">no</span>';
+
+  // venues
+  const vb=$("venues"); vb.innerHTML="";
+  (s.venues||[]).forEach(v=>{
+    const tr=document.createElement("tr");
+    const imb = v.imbalance!=null? fmt(v.imbalance,2):"—";
+    const dcol = v.delta>0?"pos":v.delta<0?"neg":"";
+    tr.innerHTML = `<td><span class="dot ${v.ok?'on':'off'}"></span>${v.venue}</td>`+
+      `<td class="mono">${v.ok?fmt(v.mid,2):'<span class="dim">'+(v.err||'down')+'</span>'}</td>`+
+      `<td class="mono">${imb}</td>`+
+      `<td class="mono ${dcol}">${v.ok?(v.delta>=0?'+':'')+fmt(v.delta,2):'—'}</td>`+
+      `<td class="mono dim">${fmt(v.weight,1)}</td>`;
+    vb.appendChild(tr);
+  });
+
+  drawChart(s.chart);
+
+  // log
+  const lg=$("log"); lg.innerHTML="";
+  (d.log||[]).slice().reverse().forEach(line=>{
+    const div=document.createElement("div");
+    if(/SKIM/.test(line)) div.className="skim";
+    else if(/REBUY/.test(line)) div.className="rebuy";
+    div.textContent=line; lg.appendChild(div);
+  });
+}
+tick(); setInterval(tick,3000);
+</script>
+</body>
+</html>
