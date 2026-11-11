@@ -120,6 +120,20 @@
 
 <div class="grid" style="margin-top:12px">
   <div class="card" style="grid-column:1/-1">
+    <h2>Suggested bid ladder · support (advisory — no orders placed)</h2>
+    <div style="overflow:auto">
+    <table>
+      <thead><tr><th>Rung</th><th>Price</th><th>% below</th><th>Basis</th><th>Weight</th></tr></thead>
+      <tbody id="ladder"></tbody>
+    </table>
+    </div>
+    <div class="dim" id="laddernote" style="font-size:11.5px;margin-top:8px">—</div>
+    <div class="dim" id="ladderwall" style="font-size:11.5px;margin-top:4px"></div>
+  </div>
+</div>
+
+<div class="grid" style="margin-top:12px">
+  <div class="card" style="grid-column:1/-1">
     <h2>Venues — orderbook &amp; trade flow</h2>
     <div style="overflow:auto">
     <table>
@@ -147,14 +161,26 @@ const pct = n => (n==null) ? "—" : (n>=0?"+":"")+fmt(n,2)+"%";
 
 function cls(n){ return n>0?"pos":n<0?"neg":""; }
 
-function drawChart(candles, liq){
+function drawChart(candles, liq, ladder){
   const cv=$("chart"), ctx=cv.getContext("2d");
   const W=cv.width, H=cv.height; ctx.clearRect(0,0,W,H);
   if(!candles||!candles.length){ return; }
   let lo=Math.min(...candles.map(c=>c.l)), hi=Math.max(...candles.map(c=>c.h));
   if(liq && liq<lo) lo=liq;   // keep the liq line on-chart if price is near it
+  if(ladder && ladder.levels) ladder.levels.forEach(L=>{ if(L.price<lo) lo=L.price; });
   const pad=(hi-lo)*0.08||1, min=lo-pad, max=hi+pad;
   const y=v=>H-((v-min)/(max-min))*H;
+  // advisory bid-ladder support lines (green dashed)
+  if(ladder && ladder.levels){
+    ctx.font="9px ui-monospace,monospace"; ctx.textAlign="left";
+    ladder.levels.forEach(L=>{
+      if(L.price>=min && L.price<=max){
+        ctx.strokeStyle="rgba(43,213,118,.40)"; ctx.setLineDash([2,3]);
+        ctx.beginPath(); ctx.moveTo(0,y(L.price)); ctx.lineTo(W,y(L.price)); ctx.stroke(); ctx.setLineDash([]);
+        ctx.fillStyle="rgba(43,213,118,.9)"; ctx.fillText("bid "+L.price.toFixed(2), 4, y(L.price)-2);
+      }
+    });
+  }
   if(liq && liq>=min && liq<=max){
     ctx.strokeStyle="rgba(255,93,93,.55)"; ctx.setLineDash([3,3]);
     ctx.beginPath(); ctx.moveTo(0,y(liq)); ctx.lineTo(W,y(liq)); ctx.stroke(); ctx.setLineDash([]);
@@ -178,8 +204,6 @@ function drawChart(candles, liq){
   ctx.fillText(last.toFixed(2), W-4, y(last)-4);
 }
 
-// API base: on github.io / the custom domain, fetch live data from the tunnel;
-// on localhost (the bot's own server) use same-origin.
 const API = (location.hostname==="localhost"||location.hostname==="127.0.0.1"||location.port==="8811")
   ? "" : "https://xmr-api.wattxchange.app";
 async function tick(){
@@ -250,7 +274,23 @@ async function tick(){
     vb.appendChild(tr);
   });
 
-  drawChart(s.chart, p.liq_price);
+  // bid ladder (advisory support levels)
+  const lad=s.ladder, lb=$("ladder"); lb.innerHTML="";
+  if(lad && lad.levels && lad.levels.length){
+    lad.levels.forEach((L,i)=>{
+      const tr=document.createElement("tr");
+      tr.innerHTML=`<td>#${i+1}</td><td class="mono pos">${fmt(L.price,2)}</td>`+
+        `<td class="mono neg">${pct(L.pct)}</td><td class="dim">${L.label}</td>`+
+        `<td class="mono">${Math.round(L.weight*100)}%</td>`;
+      lb.appendChild(tr);
+    });
+    $("laddernote").textContent = lad.note||"";
+    $("ladderwall").textContent = lad.wall
+      ? `biggest live bid wall: ${fmt(lad.wall.price,2)} (${pct(lad.wall.pct)}) · ${fmt(lad.wall.size,1)} XMR`
+      : "";
+  } else { $("laddernote").textContent="computing support levels…"; $("ladderwall").textContent=""; }
+
+  drawChart(s.chart, p.liq_price, s.ladder);
 
   // log
   const lg=$("log"); lg.innerHTML="";
