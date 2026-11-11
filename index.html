@@ -60,6 +60,7 @@
   <div class="row">
     <h1>XMR&nbsp;DESK</h1>
     <span class="badge" id="mode">PAPER</span>
+    <span class="badge" id="lev" style="background:#15233a;color:#4ea3ff;border-color:#1d3a5a">5x</span>
     <span class="live" title="live"></span>
   </div>
   <div class="dim mono" id="stamp">—</div>
@@ -73,19 +74,24 @@
     <h2>Hyperliquid XMR-PERP</h2>
     <div class="big" id="mark">—</div>
     <div class="row between" style="margin-top:8px">
-      <span class="dim" style="font-size:12px">Unrealized PnL</span>
+      <span class="dim" style="font-size:12px">Unrealized ROE (5x)</span>
       <b class="mono" id="pnl">—</b>
     </div>
     <div class="bar"><span id="pnlbar"></span></div>
     <div class="dim" id="trighint" style="font-size:11px;margin-top:6px">—</div>
+    <div class="kv" style="margin-top:8px"><span class="dim">Liquidation</span><b id="liq" class="mono neg">—</b></div>
+    <div class="kv"><span class="dim">Distance to liq</span><b id="distliq" class="mono">—</b></div>
   </div>
 
   <!-- position -->
   <div class="card">
-    <h2>Core long (held)</h2>
+    <h2>Core long (held · 5x)</h2>
     <div class="kv"><span class="dim">Size</span><b id="size">—</b></div>
     <div class="kv"><span class="dim">Avg entry</span><b id="entry">—</b></div>
+    <div class="kv"><span class="dim">Leverage</span><b id="plev">—</b></div>
+    <div class="kv"><span class="dim">Margin posted</span><b id="margin">—</b></div>
     <div class="kv"><span class="dim">Notional</span><b id="notional">—</b></div>
+    <div class="kv"><span class="dim">Funding paid</span><b id="funding">—</b></div>
     <div class="kv"><span class="dim">Realized PnL</span><b id="realized">—</b></div>
     <div class="kv"><span class="dim">Pending rebuys</span><b id="pending">—</b></div>
   </div>
@@ -141,13 +147,20 @@ const pct = n => (n==null) ? "—" : (n>=0?"+":"")+fmt(n,2)+"%";
 
 function cls(n){ return n>0?"pos":n<0?"neg":""; }
 
-function drawChart(candles){
+function drawChart(candles, liq){
   const cv=$("chart"), ctx=cv.getContext("2d");
   const W=cv.width, H=cv.height; ctx.clearRect(0,0,W,H);
   if(!candles||!candles.length){ return; }
-  const lo=Math.min(...candles.map(c=>c.l)), hi=Math.max(...candles.map(c=>c.h));
+  let lo=Math.min(...candles.map(c=>c.l)), hi=Math.max(...candles.map(c=>c.h));
+  if(liq && liq<lo) lo=liq;   // keep the liq line on-chart if price is near it
   const pad=(hi-lo)*0.08||1, min=lo-pad, max=hi+pad;
   const y=v=>H-((v-min)/(max-min))*H;
+  if(liq && liq>=min && liq<=max){
+    ctx.strokeStyle="rgba(255,93,93,.55)"; ctx.setLineDash([3,3]);
+    ctx.beginPath(); ctx.moveTo(0,y(liq)); ctx.lineTo(W,y(liq)); ctx.stroke(); ctx.setLineDash([]);
+    ctx.fillStyle="#ff5d5d"; ctx.font="10px ui-monospace,monospace"; ctx.textAlign="left";
+    ctx.fillText("liq "+liq.toFixed(2), 4, y(liq)-3);
+  }
   const n=candles.length, bw=W/n, body=Math.max(1,bw*0.6);
   candles.forEach((c,i)=>{
     const x=i*bw+bw/2;
@@ -198,6 +211,21 @@ async function tick(){
   $("realized").className = "mono "+cls(p.realized_pnl);
   $("pending").textContent = p.pending? `${p.pending.length} (${fmt(p.pending_size,4)} XMR)`:"0";
 
+  // leverage / margin / liquidation
+  $("lev").textContent = (p.leverage||5)+"x";
+  $("plev").textContent = (p.leverage||5)+"x";
+  $("margin").textContent = usd(p.margin);
+  $("funding").textContent = p.funding_paid!=null? usd(-p.funding_paid):"—";
+  $("funding").className = "mono "+((p.funding_paid||0)>0?"neg":"");
+  $("liq").textContent = p.liq_price? fmt(p.liq_price,2):"—";
+  $("distliq").textContent = p.dist_to_liq_pct!=null? pct(p.dist_to_liq_pct):"—";
+  $("distliq").className = "mono "+(p.dist_to_liq_pct!=null && p.dist_to_liq_pct<5?"neg":"pos");
+  if(p.liquidated){
+    $("err").style.display="block";
+    $("err").textContent="⚠ Position LIQUIDATED — 5x reached the liquidation price; margin lost. Reset data/state.json to restart.";
+    $("lev").textContent="LIQ"; $("lev").style.color="#ff5d5d"; $("lev").style.borderColor="#502525";
+  }
+
   // signal
   const sg=s.signal||{};
   $("nlive").textContent = sg.n_live!=null? `· ${sg.n_live}/10 live`:"";
@@ -222,7 +250,7 @@ async function tick(){
     vb.appendChild(tr);
   });
 
-  drawChart(s.chart);
+  drawChart(s.chart, p.liq_price);
 
   // log
   const lg=$("log"); lg.innerHTML="";
