@@ -120,6 +120,22 @@
 
 <div class="grid" style="margin-top:12px">
   <div class="card" style="grid-column:1/-1">
+    <h2>Positioning — who's crowded (Hyperliquid perp)</h2>
+    <div style="display:flex;flex-wrap:wrap;gap:20px;align-items:baseline">
+      <div><div class="dim" style="font-size:11px">Funding /yr</div><b id="posfundyr" class="mono" style="font-size:18px">—</b></div>
+      <div><div class="dim" style="font-size:11px">Funding /hr</div><b id="posfund" class="mono">—</b></div>
+      <div><div class="dim" style="font-size:11px">Open interest</div><b id="posoi" class="mono">—</b></div>
+      <div><div class="dim" style="font-size:11px">Mark vs oracle</div><b id="posprem" class="mono">—</b></div>
+      <div style="flex:1"></div>
+      <div id="poscrowd" style="font-weight:600;font-size:14px">—</div>
+    </div>
+    <canvas id="fundchart" width="1040" height="80" style="margin-top:10px;width:100%"></canvas>
+    <div class="dim" id="posnote" style="font-size:11.5px;margin-top:6px">—</div>
+  </div>
+</div>
+
+<div class="grid" style="margin-top:12px">
+  <div class="card" style="grid-column:1/-1">
     <h2>Suggested bid ladder · support (advisory — no orders placed)</h2>
     <div style="overflow:auto">
     <table>
@@ -212,6 +228,30 @@ function drawChart(candles, liq, ladder){
   ctx.fillText(last.toFixed(2), W-4, y(last)-4);
 }
 
+function drawFundChart(hist){
+  const cv=document.getElementById("fundchart"); if(!cv) return;
+  const ctx=cv.getContext("2d");
+  const W=cv.width=(cv.clientWidth||1040), H=cv.height;
+  ctx.clearRect(0,0,W,H);
+  if(!hist || hist.length<2){ ctx.fillStyle="rgba(255,255,255,.35)"; ctx.font="11px ui-monospace,monospace";
+    ctx.fillText("collecting funding history…",6,H/2); return; }
+  const fs=hist.map(p=>(p.f||0)*24*365*100); // annualized %
+  let lo=Math.min(0,...fs), hi=Math.max(0,...fs); if(hi===lo){hi+=1;lo-=1;}
+  const pad=6, y=v=>pad+(hi-v)/(hi-lo)*(H-2*pad), x=i=>i/(hist.length-1)*W;
+  const yz=y(0);
+  ctx.strokeStyle="rgba(255,255,255,.25)"; ctx.setLineDash([3,3]);
+  ctx.beginPath(); ctx.moveTo(0,yz); ctx.lineTo(W,yz); ctx.stroke(); ctx.setLineDash([]);
+  ctx.fillStyle="rgba(255,255,255,.45)"; ctx.font="10px ui-monospace,monospace"; ctx.textAlign="left";
+  ctx.fillText("0 = neutral (longs & shorts balanced)",5,yz-3);
+  ctx.beginPath();
+  fs.forEach((v,i)=>{ i?ctx.lineTo(x(i),y(v)):ctx.moveTo(x(i),y(v)); });
+  ctx.strokeStyle="#e0a84e"; ctx.lineWidth=1.6; ctx.stroke();
+  const lv=fs[fs.length-1];
+  ctx.fillStyle=lv>0?"#ff5d5d":"#2bd576";
+  ctx.beginPath(); ctx.arc(x(fs.length-1),y(lv),3.2,0,7); ctx.fill();
+  ctx.textAlign="right"; ctx.fillText(lv.toFixed(0)+"%/yr", W-4, y(lv)-5);
+}
+
 const API = (location.hostname==="localhost"||location.hostname==="127.0.0.1"||location.port==="8811")
   ? "" : "https://xmr-api.wattxchange.app";
 async function tick(){
@@ -267,6 +307,26 @@ async function tick(){
   $("delta").textContent = sg.delta_sign!=null? (sg.delta_sign>=0?"+":"")+fmt(sg.delta_sign,2):"—";
   $("delta").className = "mono "+cls(sg.delta_sign);
   $("bottom").innerHTML = sg.bottom? '<span class="tag yes">BOTTOMING</span>':'<span class="tag no">no</span>';
+
+  // positioning — who's crowded (funding / OI / premium + trend)
+  const fr=s.funding_rate||0, prem=s.premium||0;
+  $("posfundyr").textContent = (fr*24*365*100).toFixed(0)+"%/yr";
+  $("posfund").textContent = (fr*100).toFixed(4)+"%/hr";
+  $("posoi").textContent = s.open_interest_usd? "$"+(s.open_interest_usd/1e6).toFixed(1)+"M":"—";
+  $("posprem").textContent = (prem>=0?"+":"")+(prem*100).toFixed(3)+"%";
+  $("posprem").className = "mono "+(prem>0?"pos":prem<0?"neg":"");
+  const cL=fr>0.00002, cS=fr<-0.00002;
+  $("poscrowd").textContent = cL?"LONGS crowded ▲":cS?"SHORTS crowded ▼":"balanced";
+  $("poscrowd").className = cL?"neg":cS?"pos":"dim";
+  const fh=s.funding_history||[]; let tn="";
+  if(fh.length>5){ const a=fh[0].f||0, b=fh[fh.length-1].f||0;
+    tn = b<a-1e-5?" Trend: funding FALLING — longs unwinding (watch for a drop toward 0 = capitulation / possible bottom)."
+       : b>a+1e-5?" Trend: funding RISING — longs piling in harder (more squeeze fuel)."
+       : " Trend: funding flat."; }
+  $("posnote").textContent = (cL?"Longs are paying shorts to hold — the leveraged crowd is LONG."
+      : cS?"Shorts are paying longs — the crowd is SHORT.":"Funding ~neutral.")
+      + tn + "  (context, not a trade signal)";
+  drawFundChart(fh);
 
   // venues
   const vb=$("venues"); vb.innerHTML="";
